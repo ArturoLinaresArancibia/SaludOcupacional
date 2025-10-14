@@ -42,12 +42,16 @@ document.querySelector("#btn-login").addEventListener("click", ()=>{ show("#view
 document.querySelector("#btn-logout").addEventListener("click", async ()=>{ await supabase.auth.signOut(); location.reload(); });
 
 async function loadData(){
-  // Perfil y KPIs
+  // Perfil + rol
   const meRes = await supabase.from('usuarios').select('*').maybeSingle();
   if (meRes.error) document.querySelector("#perfil").innerHTML = `<span class="muted">${meRes.error.message}</span>`;
   else if (meRes.data) document.querySelector("#perfil").innerHTML = `<div><strong>${meRes.data.nombre ?? 'Sin nombre'}</strong></div><div class="muted">${meRes.data.email}</div>`;
   else document.querySelector("#perfil").innerHTML = `<span class="muted">Sin registro en usuarios</span>`;
 
+  const rol = (meRes.data?.rol || 'trabajador').toLowerCase();
+  if (rol === 'salud' || rol === 'admin') { document.querySelector('.tab-salud')?.classList.remove('hidden'); }
+
+  // KPIs
   const trabRes = await supabase.from('trabajadores').select('*').maybeSingle();
   let kpis = [];
   if (trabRes.data){
@@ -62,23 +66,15 @@ async function loadData(){
   }
   document.querySelector("#kpis").innerHTML = kpis.map(k=>`<div class="kpi"><div class="title">${k.title}</div><div class="value">${k.value}</div></div>`).join('');
 
-  // Alertas
+  // Alertas + chip
   const evalsRes = await supabase.from('v_alertas').select('*').order('dias_restantes');
-  if (!evalsRes.data || !evalsRes.data.length) document.querySelector("#alertas").innerHTML = `<span class="muted">Sin alertas</span>`;
-  else document.querySelector("#alertas").innerHTML = evalsRes.data.map(e=>{
-    const dias = e.dias_restantes;
-    const cls = dias < 0 ? 'crit' : (dias <= 30 ? 'crit' : (dias <= 60 ? 'warn' : 'ok'));
-    const label = dias < 0 ? 'Vencido' : (dias <= 30 ? 'Crítico' : (dias <= 60 ? 'Próximo' : 'OK'));
-    return `<div class="row" style="justify-content:space-between;align-items:center;border:1px solid #e5e7eb;padding:10px;border-radius:12px">
-      <div><strong>${e.tipo}</strong><div class="muted">Vence ${e.valido_hasta}</div></div>
-      <span class="badge ${cls}">${label} · ${dias} días</span>
-    </div>`;
-  }).join('');
+  renderAlertas(evalsRes.data || []);
+  setStatusChip(evalsRes.data || []);
 
-  // Labs con filtro
-  const labsRes = await supabase.from('examenes').select('*').order('fecha', { ascending: false }).limit(200);
+  // Labs + filtro + tendencia glucosa
+  const labsRes = await supabase.from('examenes').select('*').order('fecha', { ascending: true }).limit(200);
   const full = labsRes.data ?? [];
-  renderLabs(full);
+  renderLabs(full); drawGlucose(full);
   document.querySelector("#filtro-labs").addEventListener("input", (e)=>{
     const q = e.target.value.toLowerCase();
     const filtered = full.filter(l =>
@@ -89,8 +85,86 @@ async function loadData(){
     renderLabs(filtered);
   });
 
+  // Higiene
+  const higRes = await supabase.from('v_higiene').select('*').order('fecha', { ascending: false }).limit(200);
+  renderHigiene(higRes.data || []);
+
   // Citaciones
   const citaRes = await supabase.from('citaciones').select('*').order('fecha').limit(200);
+  renderCitaciones(citaRes);
+
+  // Recomendaciones
+  const recos = buildRecommendations(trabRes.data, full);
+  document.querySelector("#reco-cards").innerHTML = recos.length
+    ? recos.map(r=>`<div class="reco"><strong>${r.title}</strong><div class="muted">${r.detail}</div></div>`).join('')
+    : `<span class="muted">Sin recomendaciones específicas. ¡Buen trabajo!</span>`;
+
+  // Dashboard Salud
+  if (rol === 'salud' || rol === 'admin') {
+    const res = await supabase.from('resumen_vencimientos').select('*');
+    if (res.error) { document.querySelector('#dash-msg').textContent = "Crea/actualiza 'resumen_vencimientos' y ejecuta la función de refresco."; }
+    else if (!res.data || !res.data.length){ document.querySelector('#dash-msg').textContent = "Sin datos en resumen_vencimientos."; }
+    else { document.querySelector('#dash-msg').textContent = ""; renderDashboard(res.data); }
+  }
+}
+
+// UI helpers
+function renderAlertas(list){
+  const el = document.querySelector("#alertas");
+  if (!list.length){ el.innerHTML = `<span class="muted">Sin alertas</span>`; return; }
+  el.innerHTML = list.map(e=>{
+    const d = e.dias_restantes;
+    const cls = d < 0 ? 'crit' : (d <= 30 ? 'crit' : (d <= 60 ? 'warn' : 'ok'));
+    const label = d < 0 ? 'Vencido' : (d <= 30 ? 'Crítico' : (d <= 60 ? 'Próximo' : 'OK'));
+    return `<div class="row" style="justify-content:space-between;align-items:center;border:1px solid #e5e7eb;padding:10px;border-radius:12px">
+      <div><strong>${e.tipo}</strong><div class="muted">Vence ${e.valido_hasta}</div></div>
+      <span class="badge ${cls}">${label} · ${d} días</span>
+    </div>`;
+  }).join('');
+}
+function setStatusChip(alertas){
+  const el = document.querySelector('#status-chip');
+  if (!alertas.length){ el.textContent = '✅ Al día'; el.className = 'chip chip-ok'; return; }
+  const dias = alertas.map(a=>a.dias_restantes);
+  const min = Math.min(...dias);
+  if (min < 0){ el.textContent = '⛔ Vencido'; el.className = 'chip chip-crit'; }
+  else if (min <= 30){ el.textContent = '⚠️ Crítico (≤30d)'; el.className = 'chip chip-crit'; }
+  else if (min <= 60){ el.textContent = '⚠️ Próximo (≤60d)'; el.className = 'chip chip-warn'; }
+  else { el.textContent = '✅ Al día'; el.className = 'chip chip-ok'; }
+}
+function renderLabs(rows){
+  const tbody = document.querySelector("#labs tbody");
+  if (!rows.length) { tbody.innerHTML = `<tr><td colspan="6" class="muted">Sin resultados</td></tr>`; return; }
+  tbody.innerHTML = rows.map(l=>`<tr>
+    <td>${l.tipo ?? ''}</td><td>${l.parametro ?? ''}</td><td>${l.fecha ?? ''}</td>
+    <td>${l.resultado ?? ''} ${l.unidad ?? ''}</td><td>${l.referencia ?? ''}</td><td>${l.interpretacion ?? ''}</td>
+  </tr>`).join('');
+}
+function drawGlucose(rows){
+  const ctx = document.getElementById('chart-glucosa'); if (!ctx) return;
+  const data = (rows||[]).filter(r => (r.parametro||'').toLowerCase() === 'glucosa'); if (!data.length) return;
+  const labels = data.map(r=>r.fecha);
+  const values = data.map(r=>parseFloat(String(r.resultado).replace(',','.')));
+  new Chart(ctx, { type:'line', data:{ labels, datasets:[{ label:'Glucosa (mg/dL)', data: values }] } });
+}
+function renderHigiene(rows){
+  const tb = document.querySelector('#tabla-higiene tbody');
+  if (!rows.length){ tb.innerHTML = `<tr><td colspan="6" class="muted">Sin registros</td></tr>`; return; }
+  tb.innerHTML = rows.map(r=>{
+    const badge = (nivel)=>{
+      if ((nivel||'').startsWith('Crítico')) return `<span class="badge crit">${nivel}</span>`;
+      if ((nivel||'').startsWith('Próximo')) return `<span class="badge warn">${nivel}</span>`;
+      if ((nivel||'').startsWith('OK')) return `<span class="badge ok">${nivel}</span>`;
+      return `<span class="badge">${nivel||'—'}</span>`;
+    };
+    return `<tr>
+      <td>${r.agente ?? ''}</td><td>${r.ges ?? '—'}</td><td>${r.fecha ?? ''}</td>
+      <td>${r.valor ?? ''} ${r.unidad ?? ''}</td><td>${r.oel ?? ''} ${r.unidad ?? ''}</td>
+      <td>${badge(r.nivel)} ${r.pct_oel!=null ? `(${r.pct_oel}% OEL)` : ''}</td>
+    </tr>`;
+  }).join('');
+}
+function renderCitaciones(citaRes){
   const tbody = document.querySelector("#citaciones tbody");
   if (citaRes.error && citaRes.error.code === '42P01'){
     document.querySelector("#citaciones-count").textContent = "Agrega la tabla 'citaciones'";
@@ -105,56 +179,49 @@ async function loadData(){
       <td>${c.centro ?? ''}</td><td>${c.direccion ?? ''}</td><td>${c.estado ?? ''}</td>
     </tr>`).join('');
   }
-
-  // Recomendaciones personalizadas
-  const recos = buildRecommendations(trabRes.data, full);
-  document.querySelector("#reco-cards").innerHTML = recos.length
-    ? recos.map(r=>`<div class="reco"><strong>${r.title}</strong><div class="muted">${r.detail}</div></div>`).join('')
-    : `<span class="muted">Sin recomendaciones específicas. ¡Buen trabajo manteniendo tus controles!</span>`;
+}
+function renderDashboard(rows){
+  const ctx = document.getElementById('chart-vencimientos').getContext('2d');
+  const labels = rows.map(r=>r.gerencia);
+  const vencidos = rows.map(r=>r.vencidos||0);
+  const criticos30 = rows.map(r=>r.criticos_30||0);
+  const proximos60 = rows.map(r=>r.proximos_60||0);
+  const ok = rows.map(r=>(r.trabajadores||0)-((r.vencidos||0)+(r.criticos_30||0)+(r.proximos_60||0)));
+  new Chart(ctx, { type:'bar', data:{ labels, datasets:[
+    { label:'Vencidos', data:vencidos, stack:'x' },
+    { label:'≤30 días', data:criticos30, stack:'x' },
+    { label:'≤60 días', data:proximos60, stack:'x' },
+    { label:'OK', data:ok, stack:'x' },
+  ]}, options:{ responsive:true, plugins:{ legend:{ position:'bottom' } }, scales:{ x:{ stacked:true }, y:{ stacked:true, beginAtZero:true } } } });
 }
 
-function renderLabs(rows){
-  const tbody = document.querySelector("#labs tbody");
-  if (!rows.length) { tbody.innerHTML = `<tr><td colspan="6" class="muted">Sin resultados</td></tr>`; return; }
-  tbody.innerHTML = rows.map(l=>`<tr>
-    <td>${l.tipo ?? ''}</td><td>${l.parametro ?? ''}</td><td>${l.fecha ?? ''}</td>
-    <td>${l.resultado ?? ''} ${l.unidad ?? ''}</td><td>${l.referencia ?? ''}</td><td>${l.interpretacion ?? ''}</td>
-  </tr>`).join('');
-}
-
+// Calculos
 function calcIMC(peso, alturaCm){ const m=(alturaCm||0)/100; if(!peso||!m) return NaN; return peso/(m*m); }
 function calcEdad(iso){ if(!iso) return NaN; const d=new Date(iso); const diff=Date.now()-d.getTime(); return Math.floor(diff/(1000*60*60*24*365.25)); }
 function parseNumber(x){ if(x==null) return NaN; const s=String(x).replace(',', '.').match(/[0-9.]+/g); return s ? parseFloat(s.join('')) : NaN; }
-
 function buildRecommendations(trab, labs){
   const recos = [];
   if (trab){
     const imc = calcIMC(trab.peso_kg, trab.altura_cm);
     if (!isNaN(imc)){
-      if (imc >= 30) recos.push({ title: "IMC en rango obesidad", detail: "Consulta nutricional y actividad física progresiva. Prioriza pausas activas en turnos." });
+      if (imc >= 30) recos.push({ title: "IMC en rango obesidad", detail: "Consulta nutricional y actividad física progresiva." });
       else if (imc >= 25) recos.push({ title: "IMC sobrepeso", detail: "Agua como bebida principal, colaciones con proteína, 150 min/sem de actividad moderada." });
-      else if (imc < 18.5) recos.push({ title: "IMC bajo peso", detail: "Evalúa refuerzo calórico y entrenamiento de fuerza para masa magra." });
-      else recos.push({ title: "IMC saludable", detail: "Mantén hábitos actuales: hidratación, sueño y pausas activas." });
+      else if (imc < 18.5) recos.push({ title: "IMC bajo peso", detail: "Refuerzo calórico y entrenamiento de fuerza." });
+      else recos.push({ title: "IMC saludable", detail: "Mantén hábitos actuales." });
     }
   }
-  const byParam = {}; labs.forEach(l=>{ const k=(l.parametro||'').toLowerCase(); if(!byParam[k]) byParam[k]=[]; byParam[k].push(l); });
+  const byParam = {}; (labs||[]).forEach(l=>{ const k=(l.parametro||'').toLowerCase(); if(!byParam[k]) byParam[k]=[]; byParam[k].push(l); });
   const last = p => (byParam[p]||[])[0];
-  const glu = last('glucosa');
-  if (glu){ const v=parseNumber(glu.resultado);
-    if (!isNaN(v)){
-      if (v >= 126) recos.push({ title: "Glucosa elevada (≥126 mg/dL)", detail: "Agenda control médico. Evita comidas nocturnas copiosas en turno." });
-      else if (v >= 100) recos.push({ title: "Glucosa 100–125 mg/dL", detail: "Reduce azúcares simples, aumenta fibra y proteína. Repite control según indicación." });
-      else recos.push({ title: "Glucosa normal", detail: "Mantén dieta equilibrada y controles periódicos." });
-    }
-  }
-  const chol = last('colesterol total');
-  if (chol){ const v=parseNumber(chol.resultado);
-    if (!isNaN(v)){
-      if (v >= 240) recos.push({ title: "Colesterol alto (≥240 mg/dL)", detail: "Consulta médica. Prioriza grasas saludables y reduce ultraprocesados." });
-      else if (v >= 200) recos.push({ title: "Colesterol límite (200–239)", detail: "Ajustes en dieta y actividad física. Repite control." });
+  const glu = last('glucosa'); if (glu){ const v=parseNumber(glu.resultado);
+    if (!isNaN(v)){ if (v >= 126) recos.push({ title: "Glucosa elevada (≥126)", detail: "Agenda control médico." });
+      else if (v >= 100) recos.push({ title: "Glucosa 100–125", detail: "Reduce azúcares simples, aumenta fibra y proteína." });
+      else recos.push({ title: "Glucosa normal", detail: "Mantén dieta equilibrada." });
+    } }
+  const chol = last('colesterol total'); if (chol){ const v=parseNumber(chol.resultado);
+    if (!isNaN(v)){ if (v >= 240) recos.push({ title: "Colesterol alto (≥240)", detail: "Consulta médica y ajustes de dieta." });
+      else if (v >= 200) recos.push({ title: "Colesterol límite (200–239)", detail: "Ajustes de dieta y actividad física." });
       else recos.push({ title: "Colesterol deseable (<200)", detail: "Sigue con hábitos actuales." });
-    }
-  }
+    } }
   return recos;
 }
 

@@ -1,115 +1,58 @@
 <!doctype html>
-<html lang="es">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Salud Ocupacional</title>
-  <link rel="stylesheet" href="./styles.css">
-</head>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Salud Ocupacional</title><link rel="stylesheet" href="./styles.css"></head>
 <body>
-  <header class="top">
-    <div class="brand">Salud Ocupacional</div>
-    <nav id="nav">
-      <button id="btn-login" class="btn outline">Ingresar</button>
-      <button id="btn-logout" class="btn danger hidden">Salir</button>
-    </nav>
-  </header>
-
-  <main class="container">
-    <!-- Login -->
-    <section id="view-login" class="card">
-      <h1>Ingresar</h1>
-      <p class="muted">Usa tu correo corporativo para recibir un enlace mágico.</p>
-      <form id="login-form" class="row">
-        <input type="email" id="email" placeholder="correo@empresa.cl" required>
-        <button class="btn">Enviar link</button>
-      </form>
-      <div id="login-msg" class="ok hidden">Revisa tu correo para el enlace mágico.</div>
-    </section>
-
-    <!-- App -->
-    <section id="view-app" class="hidden">
-      <div class="tabs">
-        <button class="tab active" data-tab="perfil">Perfil</button>
-        <button class="tab" data-tab="externo">Portal</button>
-        <button class="tab" data-tab="citaciones">Próximas citaciones</button>
-        <button class="tab" data-tab="recomendaciones">Recomendaciones</button>
-      </div>
-
-      <!-- PERFIL -->
-      <section id="tab-perfil" class="tabview active">
-        <div class="grid">
-          <div class="card">
-            <h2>Mi Perfil</h2>
-            <div id="perfil"><span class="muted">Cargando…</span></div>
-            <div id="kpis" class="kpis"></div>
-          </div>
-          <div class="card">
-            <h2>Mis Alertas</h2>
-            <div id="alertas" class="list"><span class="muted">Cargando…</span></div>
-          </div>
-          <div class="card wide">
-            <div class="row between">
-              <h2>Resultados de Laboratorio</h2>
-              <input id="filtro-labs" class="input" placeholder="Filtrar…">
-            </div>
-            <table class="table" id="labs">
-              <thead><tr><th>Tipo</th><th>Parámetro</th><th>Fecha</th><th>Resultado</th><th>Ref.</th><th>Int.</th></tr></thead>
-              <tbody><tr><td colspan="6" class="muted">Cargando…</td></tr></tbody>
-            </table>
-          </div>
-        </div>
-      </section>
-
-      <!-- EXTERNO -->
-      <section id="tab-externo" class="tabview">
-        <div class="card">
-          <h2>Portal externo</h2>
-          <p class="muted">Accede a recursos y material de apoyo.</p>
-          <div class="embed-wrap">
-            <iframe id="iframe-externo" src="https://artlincl.github.io" title="Portal externo"></iframe>
-          </div>
-        </div>
-      </section>
-
-      <!-- CITACIONES -->
-      <section id="tab-citaciones" class="tabview">
-        <div class="card">
-          <div class="row between">
-            <h2>Próximas citaciones</h2>
-            <span class="muted" id="citaciones-count"></span>
-          </div>
-          <table class="table" id="citaciones">
-            <thead><tr><th>Fecha</th><th>Hora</th><th>Tipo</th><th>Centro</th><th>Dirección</th><th>Estado</th></tr></thead>
-            <tbody><tr><td colspan="6" class="muted">Cargando…</td></tr></tbody>
-          </table>
-        </div>
-      </section>
-
-      <!-- RECOMENDACIONES -->
-      <section id="tab-recomendaciones" class="tabview">
-        <div class="card">
-          <h2>Recomendaciones personalizadas</h2>
-          <div id="reco-cards" class="reco-cards"><span class="muted">Analizando…</span></div>
-          <details class="mt8">
-            <summary>¿Cómo se calculan?</summary>
-            <ul class="muted">
-              <li><strong>IMC</strong> a partir de altura/peso (tabla <code>trabajadores</code>).</li>
-              <li><strong>Glucosa</strong> en ayuno: normal (70–99), elevada (100–125), posible diabetes (≥126).</li>
-              <li><strong>Colesterol total</strong>: deseable (&lt;200), límite (200–239), alto (≥240).</li>
-            </ul>
-          </details>
-        </div>
-      </section>
-    </section>
-  </main>
-
-  <footer class="foot">
-    <small class="muted">Demo sin build — Supabase + JS (CDN). Seguridad por RLS.</small>
-  </footer>
-
-  <script type="module" src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script type="module" src="./config.js"></script>
-  <script type="module" src="./app.js"></script>
-</body>
-</html>
+<header class="top"><div class="brand">Salud Ocupacional</div><div class="status-wrap"><span id="status-chip" class="chip chip-muted">Calculando…</span></div>
+<nav id="nav"><button id="btn-login" class="btn outline">Ingresar</button><button id="btn-logout" class="btn danger hidden">Salir</button></nav></header>
+<main class="container">
+<section id="view-login" class="card"><h1>Ingresar</h1><p class="muted">Usa tu correo corporativo para recibir un enlace mágico.</p>
+<form id="login-form" class="row"><input type="email" id="email" placeholder="correo@empresa.cl" required><button class="btn">Enviar link</button></form>
+<div id="login-msg" class="ok hidden">Revisa tu correo para el enlace mágico.</div></section>
+<section id="view-app" class="hidden">
+<div class="tabs">
+  <button class="tab active" data-tab="perfil">Perfil</button>
+  <button class="tab" data-tab="higiene">Higiene</button>
+  <button class="tab" data-tab="externo">Portal</button>
+  <button class="tab" data-tab="citaciones">Próximas citaciones</button>
+  <button class="tab" data-tab="recomendaciones">Recomendaciones</button>
+  <button class="tab tab-salud hidden" data-tab="dashboard">Dashboard Salud</button>
+</div>
+<section id="tab-perfil" class="tabview active">
+  <div class="grid">
+    <div class="card"><h2>Mi Perfil</h2><div id="perfil"><span class="muted">Cargando…</span></div><div id="kpis" class="kpis"></div></div>
+    <div class="card"><h2>Mis Alertas</h2><div id="alertas" class="list"><span class="muted">Cargando…</span></div></div>
+    <div class="card wide"><div class="row between"><h2>Resultados de Laboratorio</h2><input id="filtro-labs" class="input" placeholder="Filtrar…"></div>
+      <table class="table" id="labs"><thead><tr><th>Tipo</th><th>Parámetro</th><th>Fecha</th><th>Resultado</th><th>Ref.</th><th>Int.</th></tr></thead>
+      <tbody><tr><td colspan="6" class="muted">Cargando…</td></tr></tbody></table>
+      <div class="card mt12"><h3>Tendencia de Glucosa</h3><canvas id="chart-glucosa" height="120"></canvas></div>
+    </div>
+  </div>
+</section>
+<section id="tab-higiene" class="tabview">
+  <div class="card"><h2>Higiene ocupacional</h2><p class="muted">Agentes, GES y nivel de riesgo respecto al OEL.</p>
+  <table class="table" id="tabla-higiene"><thead><tr><th>Agente</th><th>GES</th><th>Fecha</th><th>Valor</th><th>OEL</th><th>Nivel</th></tr></thead>
+  <tbody><tr><td colspan="6" class="muted">Cargando…</td></tr></tbody></table></div>
+</section>
+<section id="tab-externo" class="tabview"><div class="card"><h2>Portal externo</h2><p class="muted">Accede a recursos y material de apoyo.</p>
+<div class="embed-wrap"><iframe id="iframe-externo" src="https://artlincl.github.io" title="Portal externo"></iframe></div></div></section>
+<section id="tab-citaciones" class="tabview"><div class="card"><div class="row between">
+<h2>Próximas citaciones</h2><span class="muted" id="citaciones-count"></span></div>
+<table class="table" id="citaciones"><thead><tr><th>Fecha</th><th>Hora</th><th>Tipo</th><th>Centro</th><th>Dirección</th><th>Estado</th></tr></thead>
+<tbody><tr><td colspan="6" class="muted">Cargando…</td></tr></tbody></table></div></section>
+<section id="tab-recomendaciones" class="tabview"><div class="card"><h2>Recomendaciones personalizadas</h2>
+<div id="reco-cards" class="reco-cards"><span class="muted">Analizando…</span></div>
+<details class="mt8"><summary>¿Cómo se calculan?</summary><ul class="muted">
+<li><strong>IMC</strong> desde altura/peso (tabla <code>trabajadores</code>).</li>
+<li><strong>Glucosa</strong>: normal 70–99; 100–125 prediabetes; ≥126 consultar.</li>
+<li><strong>Colesterol total</strong>: deseable &lt;200; límite 200–239; alto ≥240.</li>
+</ul></details></div></section>
+<section id="tab-dashboard" class="tabview"><div class="card"><h2>Dashboard Salud (solo perfil salud)</h2>
+<p class="muted">Resumen de vencimientos por gerencia.</p><canvas id="chart-vencimientos" height="140"></canvas><div id="dash-msg" class="muted mt8"></div></div></section>
+</section>
+</main>
+<footer class="foot"><small class="muted">Demo sin build — Supabase + JS (CDN). Seguridad por RLS.</small></footer>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script type="module" src="./config.js"></script>
+<script type="module" src="./app.js"></script>
+</body></html>
