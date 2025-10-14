@@ -16,6 +16,7 @@
   </header>
 
   <main class="container">
+    <!-- Login -->
     <section id="view-login" class="card">
       <h1>Ingresar</h1>
       <p class="muted">Usa tu correo corporativo para recibir un enlace mágico.</p>
@@ -26,24 +27,80 @@
       <div id="login-msg" class="ok hidden">Revisa tu correo para el enlace mágico.</div>
     </section>
 
+    <!-- App -->
     <section id="view-app" class="hidden">
-      <div class="grid">
-        <div class="card">
-          <h2>Mi Perfil</h2>
-          <div id="perfil"><span class="muted">Cargando…</span></div>
+      <div class="tabs">
+        <button class="tab active" data-tab="perfil">Perfil</button>
+        <button class="tab" data-tab="externo">Portal</button>
+        <button class="tab" data-tab="citaciones">Próximas citaciones</button>
+        <button class="tab" data-tab="recomendaciones">Recomendaciones</button>
+      </div>
+
+      <!-- PERFIL -->
+      <section id="tab-perfil" class="tabview active">
+        <div class="grid">
+          <div class="card">
+            <h2>Mi Perfil</h2>
+            <div id="perfil"><span class="muted">Cargando…</span></div>
+            <div id="kpis" class="kpis"></div>
+          </div>
+          <div class="card">
+            <h2>Mis Alertas</h2>
+            <div id="alertas" class="list"><span class="muted">Cargando…</span></div>
+          </div>
+          <div class="card wide">
+            <div class="row between">
+              <h2>Resultados de Laboratorio</h2>
+              <input id="filtro-labs" class="input" placeholder="Filtrar…">
+            </div>
+            <table class="table" id="labs">
+              <thead><tr><th>Tipo</th><th>Parámetro</th><th>Fecha</th><th>Resultado</th><th>Ref.</th><th>Int.</th></tr></thead>
+              <tbody><tr><td colspan="6" class="muted">Cargando…</td></tr></tbody>
+            </table>
+          </div>
         </div>
+      </section>
+
+      <!-- EXTERNO -->
+      <section id="tab-externo" class="tabview">
         <div class="card">
-          <h2>Mis Alertas</h2>
-          <div id="alertas" class="list"><span class="muted">Cargando…</span></div>
+          <h2>Portal externo</h2>
+          <p class="muted">Accede a recursos y material de apoyo.</p>
+          <div class="embed-wrap">
+            <iframe id="iframe-externo" src="https://artlincl.github.io" title="Portal externo"></iframe>
+          </div>
         </div>
-        <div class="card wide">
-          <h2>Resultados de Laboratorio</h2>
-          <table class="table" id="labs">
-            <thead><tr><th>Tipo</th><th>Parámetro</th><th>Fecha</th><th>Resultado</th><th>Ref.</th><th>Int.</th></tr></thead>
+      </section>
+
+      <!-- CITACIONES -->
+      <section id="tab-citaciones" class="tabview">
+        <div class="card">
+          <div class="row between">
+            <h2>Próximas citaciones</h2>
+            <span class="muted" id="citaciones-count"></span>
+          </div>
+          <table class="table" id="citaciones">
+            <thead><tr><th>Fecha</th><th>Hora</th><th>Tipo</th><th>Centro</th><th>Dirección</th><th>Estado</th></tr></thead>
             <tbody><tr><td colspan="6" class="muted">Cargando…</td></tr></tbody>
           </table>
         </div>
-      </div>
+      </section>
+
+      <!-- RECOMENDACIONES -->
+      <section id="tab-recomendaciones" class="tabview">
+        <div class="card">
+          <h2>Recomendaciones personalizadas</h2>
+          <div id="reco-cards" class="reco-cards"><span class="muted">Analizando…</span></div>
+          <details class="mt8">
+            <summary>¿Cómo se calculan?</summary>
+            <ul class="muted">
+              <li><strong>IMC</strong> a partir de altura/peso (tabla <code>trabajadores</code>).</li>
+              <li><strong>Glucosa</strong> en ayuno: normal (70–99), elevada (100–125), posible diabetes (≥126).</li>
+              <li><strong>Colesterol total</strong>: deseable (&lt;200), límite (200–239), alto (≥240).</li>
+            </ul>
+          </details>
+        </div>
+      </section>
     </section>
   </main>
 
