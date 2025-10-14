@@ -42,14 +42,13 @@ document.querySelector("#btn-login").addEventListener("click", ()=>{ show("#view
 document.querySelector("#btn-logout").addEventListener("click", async ()=>{ await supabase.auth.signOut(); location.reload(); });
 
 async function loadData(){
-  // Perfil + rol
+  // Perfil y rol
   const meRes = await supabase.from('usuarios').select('*').maybeSingle();
   if (meRes.error) document.querySelector("#perfil").innerHTML = `<span class="muted">${meRes.error.message}</span>`;
   else if (meRes.data) document.querySelector("#perfil").innerHTML = `<div><strong>${meRes.data.nombre ?? 'Sin nombre'}</strong></div><div class="muted">${meRes.data.email}</div>`;
   else document.querySelector("#perfil").innerHTML = `<span class="muted">Sin registro en usuarios</span>`;
-
   const rol = (meRes.data?.rol || 'trabajador').toLowerCase();
-  if (rol === 'salud' || rol === 'admin') { document.querySelector('.tab-salud')?.classList.remove('hidden'); }
+  if (rol === 'salud' || rol === 'admin') { document.querySelector('.tab-salud').classList.remove('hidden'); }
 
   // KPIs
   const trabRes = await supabase.from('trabajadores').select('*').maybeSingle();
@@ -71,10 +70,10 @@ async function loadData(){
   renderAlertas(evalsRes.data || []);
   setStatusChip(evalsRes.data || []);
 
-  // Labs + filtro + tendencia glucosa
-  const labsRes = await supabase.from('examenes').select('*').order('fecha', { ascending: true }).limit(200);
+  // Labs con filtro
+  const labsRes = await supabase.from('examenes').select('*').order('fecha', { ascending: false }).limit(200);
   const full = labsRes.data ?? [];
-  renderLabs(full); drawGlucose(full);
+  renderLabs(full);
   document.querySelector("#filtro-labs").addEventListener("input", (e)=>{
     const q = e.target.value.toLowerCase();
     const filtered = full.filter(l =>
@@ -85,7 +84,7 @@ async function loadData(){
     renderLabs(filtered);
   });
 
-  // Higiene
+  // Higiene (servidor ya filtra por usuario)
   const higRes = await supabase.from('v_higiene').select('*').order('fecha', { ascending: false }).limit(200);
   renderHigiene(higRes.data || []);
 
@@ -101,10 +100,16 @@ async function loadData(){
 
   // Dashboard Salud
   if (rol === 'salud' || rol === 'admin') {
-    const res = await supabase.from('resumen_vencimientos').select('*');
-    if (res.error) { document.querySelector('#dash-msg').textContent = "Crea/actualiza 'resumen_vencimientos' y ejecuta la función de refresco."; }
-    else if (!res.data || !res.data.length){ document.querySelector('#dash-msg').textContent = "Sin datos en resumen_vencimientos."; }
-    else { document.querySelector('#dash-msg').textContent = ""; renderDashboard(res.data); }
+    const [venc, imc, glu, chol] = await Promise.all([
+      supabase.from('resumen_vencimientos').select('*'),
+      supabase.from('resumen_imc').select('*'),
+      supabase.from('resumen_labs_glucosa').select('*'),
+      supabase.from('resumen_labs_colesterol').select('*')
+    ]);
+    if (!venc.error && venc.data?.length) renderVenc(venc.data); else $('#dash-msg').textContent = "Completa y refresca los resúmenes.";
+    if (!imc.error && imc.data?.length) renderIMC(imc.data); else $('#dash-msg-imc').textContent = "Sin datos IMC (revisa peso/altura y ejecuta refresh).";
+    if (!glu.error && glu.data?.length) renderGlu(glu.data); else $('#dash-msg-glu').textContent = "Sin datos de glucosa (sube exámenes y ejecuta refresh).";
+    if (!chol.error && chol.data?.length) renderChol(chol.data); else $('#dash-msg-chol').textContent = "Sin datos de colesterol (sube exámenes y ejecuta refresh).";
   }
 }
 
@@ -140,13 +145,6 @@ function renderLabs(rows){
     <td>${l.resultado ?? ''} ${l.unidad ?? ''}</td><td>${l.referencia ?? ''}</td><td>${l.interpretacion ?? ''}</td>
   </tr>`).join('');
 }
-function drawGlucose(rows){
-  const ctx = document.getElementById('chart-glucosa'); if (!ctx) return;
-  const data = (rows||[]).filter(r => (r.parametro||'').toLowerCase() === 'glucosa'); if (!data.length) return;
-  const labels = data.map(r=>r.fecha);
-  const values = data.map(r=>parseFloat(String(r.resultado).replace(',','.')));
-  new Chart(ctx, { type:'line', data:{ labels, datasets:[{ label:'Glucosa (mg/dL)', data: values }] } });
-}
 function renderHigiene(rows){
   const tb = document.querySelector('#tabla-higiene tbody');
   if (!rows.length){ tb.innerHTML = `<tr><td colspan="6" class="muted">Sin registros</td></tr>`; return; }
@@ -164,23 +162,9 @@ function renderHigiene(rows){
     </tr>`;
   }).join('');
 }
-function renderCitaciones(citaRes){
-  const tbody = document.querySelector("#citaciones tbody");
-  if (citaRes.error && citaRes.error.code === '42P01'){
-    document.querySelector("#citaciones-count").textContent = "Agrega la tabla 'citaciones'";
-    tbody.innerHTML = `<tr><td colspan="6" class="muted">Crea la tabla 'citaciones' (ver guía)</td></tr>`;
-  } else if (!citaRes.data || !citaRes.data.length){
-    document.querySelector("#citaciones-count").textContent = "0";
-    tbody.innerHTML = `<tr><td colspan="6" class="muted">Sin citaciones</td></tr>`;
-  } else {
-    document.querySelector("#citaciones-count").textContent = citaRes.data.length;
-    tbody.innerHTML = citaRes.data.map(c=>`<tr>
-      <td>${c.fecha ?? ''}</td><td>${c.hora ?? ''}</td><td>${c.tipo ?? ''}</td>
-      <td>${c.centro ?? ''}</td><td>${c.direccion ?? ''}</td><td>${c.estado ?? ''}</td>
-    </tr>`).join('');
-  }
-}
-function renderDashboard(rows){
+
+// Dashboard charts
+function renderVenc(rows){
   const ctx = document.getElementById('chart-vencimientos').getContext('2d');
   const labels = rows.map(r=>r.gerencia);
   const vencidos = rows.map(r=>r.vencidos||0);
@@ -192,6 +176,41 @@ function renderDashboard(rows){
     { label:'≤30 días', data:criticos30, stack:'x' },
     { label:'≤60 días', data:proximos60, stack:'x' },
     { label:'OK', data:ok, stack:'x' },
+  ]}, options:{ responsive:true, plugins:{ legend:{ position:'bottom' } }, scales:{ x:{ stacked:true }, y:{ stacked:true, beginAtZero:true } } } });
+}
+
+function renderIMC(rows){
+  const ctx = document.getElementById('chart-imc').getContext('2d');
+  const labels = rows.map(r=>r.gerencia);
+  const bajo = rows.map(r=>r.bajo_peso||0);
+  const normal = rows.map(r=>r.normal||0);
+  const sobre = rows.map(r=>r.sobrepeso||0);
+  const obeso = rows.map(r=>r.obesidad||0);
+  new Chart(ctx, { type:'bar', data:{ labels, datasets:[
+    { label:'Bajo peso', data:bajo, stack:'x' },
+    { label:'Normal', data:normal, stack:'x' },
+    { label:'Sobrepeso', data:sobre, stack:'x' },
+    { label:'Obesidad', data:obeso, stack:'x' },
+  ]}, options:{ responsive:true, plugins:{ legend:{ position:'bottom' } }, scales:{ x:{ stacked:true }, y:{ stacked:true, beginAtZero:true } } } });
+}
+
+function renderGlu(rows){
+  const ctx = document.getElementById('chart-glu').getContext('2d');
+  const labels = rows.map(r=>r.gerencia);
+  new Chart(ctx, { type:'bar', data:{ labels, datasets:[
+    { label:'Normal (<100)', data: rows.map(r=>r.normal||0), stack:'x' },
+    { label:'100–125', data: rows.map(r=>r.pre||0), stack:'x' },
+    { label:'≥126', data: rows.map(r=>r.alta||0), stack:'x' },
+  ]}, options:{ responsive:true, plugins:{ legend:{ position:'bottom' } }, scales:{ x:{ stacked:true }, y:{ stacked:true, beginAtZero:true } } } });
+}
+
+function renderChol(rows){
+  const ctx = document.getElementById('chart-chol').getContext('2d');
+  const labels = rows.map(r=>r.gerencia);
+  new Chart(ctx, { type:'bar', data:{ labels, datasets:[
+    { label:'Deseable (<200)', data: rows.map(r=>r.normal||0), stack:'x' },
+    { label:'Límite (200–239)', data: rows.map(r=>r.limite||0), stack:'x' },
+    { label:'Alto (≥240)', data: rows.map(r=>r.alto||0), stack:'x' },
   ]}, options:{ responsive:true, plugins:{ legend:{ position:'bottom' } }, scales:{ x:{ stacked:true }, y:{ stacked:true, beginAtZero:true } } } });
 }
 
