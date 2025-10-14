@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Salud Ocupacional</title>
-  <link rel="stylesheet" href="./styles.css?v=3">
+  <link rel="stylesheet" href="./styles.css?v=4">
 </head>
 <body>
   <header class="top">
@@ -19,7 +19,6 @@
   </header>
 
   <main class="container">
-    <!-- Login -->
     <section id="view-login" class="card">
       <h1>Ingresar</h1>
       <p class="muted">Usa tu correo corporativo para recibir un enlace mágico.</p>
@@ -30,7 +29,6 @@
       <div id="login-msg" class="ok hidden">Revisa tu correo para el enlace mágico.</div>
     </section>
 
-    <!-- App -->
     <section id="view-app" class="hidden">
       <div class="tabs">
         <button class="tab active" data-tab="perfil">Perfil</button>
@@ -41,7 +39,6 @@
         <button class="tab tab-salud hidden" data-tab="dashboard">Dashboard Salud</button>
       </div>
 
-      <!-- PERFIL -->
       <section id="tab-perfil" class="tabview active">
         <div class="grid">
           <div class="card">
@@ -66,7 +63,6 @@
         </div>
       </section>
 
-      <!-- HIGIENE -->
       <section id="tab-higiene" class="tabview">
         <div class="card">
           <h2>Higiene ocupacional</h2>
@@ -80,7 +76,6 @@
         </div>
       </section>
 
-      <!-- EXTERNO -->
       <section id="tab-externo" class="tabview">
         <div class="card">
           <h2>Portal externo</h2>
@@ -91,7 +86,6 @@
         </div>
       </section>
 
-      <!-- CITACIONES -->
       <section id="tab-citaciones" class="tabview">
         <div class="card">
           <div class="row between">
@@ -105,7 +99,6 @@
         </div>
       </section>
 
-      <!-- RECOMENDACIONES -->
       <section id="tab-recomendaciones" class="tabview">
         <div class="card">
           <h2>Recomendaciones personalizadas</h2>
@@ -113,15 +106,14 @@
           <details class="mt8">
             <summary>¿Cómo se calculan?</summary>
             <ul class="muted">
-              <li><strong>IMC</strong> desde altura/peso (tabla <code>trabajadores</code>).</li>
-              <li><strong>Glucosa</strong>: normal 70–99; 100–125 prediabetes; ≥126 consultar.</li>
-              <li><strong>Colesterol total</strong>: deseable &lt;200; límite 200–239; alto ≥240.</li>
+              <li><strong>IMC</strong> desde altura/peso.</li>
+              <li><strong>Glucosa</strong>: normal 70–99; 100–125; ≥126.</li>
+              <li><strong>Colesterol total</strong>: &lt;200 deseable; 200–239 límite; ≥240 alto.</li>
             </ul>
           </details>
         </div>
       </section>
 
-      <!-- DASHBOARD SALUD -->
       <section id="tab-dashboard" class="tabview">
         <div class="card">
           <h2>Dashboard Salud (solo perfil salud)</h2>
@@ -158,7 +150,7 @@
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script type="module" src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script type="module" src="./config.js?v=3"></script>
-  <script type="module" src="./app.js?v=3"></script>
+  <script type="module" src="./config.js?v=4"></script>
+  <script type="module" src="./app.js?v=4"></script>
 </body>
 </html>
