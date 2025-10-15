@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Salud Ocupacional</title>
-  <link rel="stylesheet" href="./styles.css?v=4">
+  <link rel="stylesheet" href="./styles.css?v=5">
 </head>
 <body>
   <header class="top">
@@ -37,8 +37,10 @@
         <button class="tab" data-tab="citaciones">Próximas citaciones</button>
         <button class="tab" data-tab="recomendaciones">Recomendaciones</button>
         <button class="tab tab-salud hidden" data-tab="dashboard">Dashboard Salud</button>
+        <button class="tab tab-salud hidden" data-tab="supervisor">Supervisor</button>
       </div>
 
+      <!-- PERFIL -->
       <section id="tab-perfil" class="tabview active">
         <div class="grid">
           <div class="card">
@@ -63,6 +65,7 @@
         </div>
       </section>
 
+      <!-- HIGIENE -->
       <section id="tab-higiene" class="tabview">
         <div class="card">
           <h2>Higiene ocupacional</h2>
@@ -76,6 +79,7 @@
         </div>
       </section>
 
+      <!-- EXTERNO -->
       <section id="tab-externo" class="tabview">
         <div class="card">
           <h2>Portal externo</h2>
@@ -86,6 +90,7 @@
         </div>
       </section>
 
+      <!-- CITACIONES -->
       <section id="tab-citaciones" class="tabview">
         <div class="card">
           <div class="row between">
@@ -99,6 +104,7 @@
         </div>
       </section>
 
+      <!-- RECOMENDACIONES -->
       <section id="tab-recomendaciones" class="tabview">
         <div class="card">
           <h2>Recomendaciones personalizadas</h2>
@@ -114,6 +120,7 @@
         </div>
       </section>
 
+      <!-- DASHBOARD SALUD -->
       <section id="tab-dashboard" class="tabview">
         <div class="card">
           <h2>Dashboard Salud (solo perfil salud)</h2>
@@ -141,6 +148,52 @@
           </div>
         </div>
       </section>
+
+      <!-- SUPERVISOR (buscar trabajador) -->
+      <section id="tab-supervisor" class="tabview">
+        <div class="card">
+          <h2>Supervisor – Buscar trabajador</h2>
+          <div class="row" style="gap:8px;align-items:flex-end">
+            <div style="flex:1">
+              <label class="muted">Nombre, email o RUT</label>
+              <input id="srch" class="input" placeholder="Ej: Juan, @empresa.cl o 16.XXX.XXX-X">
+            </div>
+            <button id="btn-clear" class="btn outline">Limpiar</button>
+          </div>
+          <div id="srch-results" class="list mt8"></div>
+        </div>
+
+        <div class="grid" id="sup-detail" style="display:none">
+          <div class="card">
+            <h3>Perfil</h3>
+            <div id="sup-perfil" class="muted">—</div>
+            <div id="sup-kpis" class="kpis mt8"></div>
+          </div>
+          <div class="card">
+            <h3>Citaciones</h3>
+            <table class="table" id="sup-cit">
+              <thead><tr><th>Fecha</th><th>Hora</th><th>Tipo</th><th>Centro</th><th>Dirección</th><th>Estado</th></tr></thead>
+              <tbody><tr><td colspan="6" class="muted">—</td></tr></tbody>
+            </table>
+          </div>
+          <div class="card wide">
+            <div class="row between"><h3>Laboratorio</h3><input id="sup-filtro-labs" class="input" placeholder="Filtrar…"></div>
+            <table class="table" id="sup-labs">
+              <thead><tr><th>Tipo</th><th>Parámetro</th><th>Fecha</th><th>Resultado</th><th>Ref.</th><th>Int.</th></tr></thead>
+              <tbody><tr><td colspan="6" class="muted">—</td></tr></tbody>
+            </table>
+          </div>
+          <div class="card wide">
+            <h3>Higiene ocupacional</h3>
+            <table class="table" id="sup-hig">
+              <thead><tr><th>Agente</th><th>GES</th><th>Fecha</th><th>Valor</th><th>OEL</th><th>Nivel</th></tr></thead>
+              <tbody><tr><td colspan="6" class="muted">—</td></tr></tbody>
+            </table>
+            <div id="sup-hig-msg" class="muted mt8"></div>
+          </div>
+        </div>
+      </section>
+
     </section>
   </main>
 
@@ -150,7 +203,7 @@
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script type="module" src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script type="module" src="./config.js?v=4"></script>
-  <script type="module" src="./app.js?v=4"></script>
+  <script type="module" src="./config.js?v=5"></script>
+  <script type="module" src="./app.js?v=5"></script>
 </body>
 </html>
