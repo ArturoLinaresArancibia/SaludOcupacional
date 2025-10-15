@@ -5,23 +5,26 @@ const $ = (sel)=>document.querySelector(sel);
 const show = (id)=>$(id).classList.remove('hidden');
 const hide = (id)=>$(id).classList.add('hidden');
 
+// Tabs
 document.querySelectorAll('.tab').forEach(btn=>{
   btn.addEventListener('click', ()=>{
     document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'));
     document.querySelectorAll('.tabview').forEach(v=>v.classList.remove('active'));
     btn.classList.add('active');
-    $("#tab-"+btn.dataset.tab).classList.add('active');
+    const name = btn.dataset.tab;
+    $("#tab-"+name).classList.add('active');
   });
 });
 $("#iframe-externo").src = EXTERNAL_PORTAL_URL;
 
+// Auth
 async function refresh() {
   const { data: { user } } = await supabase.auth.getUser();
   if (user) {
     hide("#view-login"); show("#view-app");
     $("#btn-login").classList.add("hidden");
     $("#btn-logout").classList.remove("hidden");
-    loadData(user);
+    loadData();
   } else {
     show("#view-login"); hide("#view-app");
     $("#btn-login").classList.remove("hidden");
@@ -38,53 +41,41 @@ document.querySelector("#login-form").addEventListener("submit", async (e)=>{
 document.querySelector("#btn-login").addEventListener("click", ()=>{ show("#view-login"); hide("#view-app"); });
 document.querySelector("#btn-logout").addEventListener("click", async ()=>{ await supabase.auth.signOut(); location.reload(); });
 
-async function loadData(user){
-  const email = user?.email;
+async function loadData(){
+  try {
+    // Perfil y rol
+    const meRes = await supabase.from('usuarios').select('*').maybeSingle();
+    if (meRes.error) document.querySelector("#perfil").innerHTML = `<span class="muted">${meRes.error.message}</span>`;
+    else if (meRes.data) document.querySelector("#perfil").innerHTML = `<div><strong>${meRes.data.nombre ?? 'Sin nombre'}</strong></div><div class="muted">${meRes.data.email}</div>`;
+    else document.querySelector("#perfil").innerHTML = `<span class="muted">Sin registro en usuarios</span>`;
+    const rol = (meRes.data?.rol || 'trabajador').toLowerCase();
+    if (rol === 'salud' || rol === 'admin') { document.querySelectorAll('.tab-salud').forEach(t=>t.classList.remove('hidden')); }
 
-  // USUARIO (limit(1) para evitar single())
-  const u = await supabase.from('usuarios').select('rut,email,nombre,rol').eq('email', email).limit(1);
-  const me = (u.data||[])[0];
-  if (u.error) { $("#perfil").innerHTML = `<span class="muted">${u.error.message}</span>`; }
-  else if (!me) { $("#perfil").innerHTML = `<span class="muted">No existe fila en 'usuarios' para ${email}</span>`; }
-  else { $("#perfil").innerHTML = `<div><strong>${me.nombre ?? 'Sin nombre'}</strong></div><div class="muted">${me.email}</div>`; }
+    // KPIs
+    const trabRes = await supabase.from('trabajadores').select('*').maybeSingle();
+    let kpis = [];
+    if (trabRes.data){
+      const t = trabRes.data;
+      const imc = calcIMC(t.peso_kg, t.altura_cm);
+      const edad = calcEdad(t.fecha_nacimiento);
+      kpis = [
+        { title: 'Edad', value: isNaN(edad)?'—':`${edad} años` },
+        { title: 'IMC', value: isNaN(imc)?'—':imc.toFixed(1) },
+        { title: 'Empresa', value: t.empresa ?? '—' }
+      ];
+    }
+    document.querySelector("#kpis").innerHTML = kpis.map(k=>`<div class="kpi"><div class="title">${k.title}</div><div class="value">${k.value}</div></div>`).join('');
 
-  // ROL
-  let rol = (me?.rol || 'trabajador').toLowerCase();
-  if (!me?.rol) {
-    const r = await supabase.from('roles').select('rol').eq('email', email).limit(1);
-    if (!r.error && r.data?.length) rol = r.data[0].rol.toLowerCase();
-  }
-  if (['salud','admin'].includes(rol)) document.querySelectorAll('.tab-salud').forEach(t=>t.classList.remove('hidden'));
+    // Alertas + chip
+    const evalsRes = await supabase.from('v_alertas').select('*').order('dias_restantes');
+    renderAlertas(evalsRes.data || []);
+    setStatusChip(evalsRes.data || []);
 
-  // TRABAJADOR por rut o email
-  let t;
-  if (me?.rut) t = (await supabase.from('trabajadores').select('*').eq('rut', me.rut).limit(1)).data?.[0];
-  else t = (await supabase.from('trabajadores').select('*').eq('email', email).limit(1)).data?.[0];
-
-  // KPIs
-  const imc = calcIMC(t?.peso_kg, t?.altura_cm);
-  const edad = calcEdad(t?.fecha_nacimiento);
-  const kpis = [
-    { title: 'Edad', value: isNaN(edad)?'—':`${edad} años` },
-    { title: 'IMC', value: isNaN(imc)?'—':imc.toFixed(1) },
-    { title: 'Empresa', value: t?.empresa ?? '—' }
-  ];
-  $("#kpis").innerHTML = kpis.map(k=>`<div class="kpi"><div class="title">${k.title}</div><div class="value">${k.value}</div></div>`).join('');
-
-  // ALERTAS
-  const evalsRes = await supabase.from('v_alertas').select('*').order('dias_restantes');
-  if (evalsRes.error) { $("#alertas").innerHTML = `<span class="muted">${evalsRes.error.message}</span>`; }
-  else renderAlertas(evalsRes.data || []);
-  setStatusChip(evalsRes.data || []);
-
-  // LABS
-  const labsRes = await supabase.from('examenes').select('*').order('fecha', { ascending: false }).limit(200);
-  if (labsRes.error && labsRes.error.code === '42501') {
-    $("#labs tbody").innerHTML = `<tr><td colspan="6" class="muted">Sin permisos para ver exámenes. Revisa RLS (examenes).</td></tr>`;
-  } else {
+    // Labs con filtro
+    const labsRes = await supabase.from('examenes').select('*').order('fecha', { ascending: false }).limit(200);
     const full = labsRes.data ?? [];
     renderLabs(full);
-    $("#filtro-labs").addEventListener("input", (e)=>{
+    document.querySelector("#filtro-labs").addEventListener("input", (e)=>{
       const q = e.target.value.toLowerCase();
       const filtered = full.filter(l =>
         (l.tipo||'').toLowerCase().includes(q) ||
@@ -93,47 +84,41 @@ async function loadData(user){
       );
       renderLabs(filtered);
     });
-  }
 
-  // HIGIENE (vista)
-  const higRes = await supabase.from('v_higiene').select('*').order('fecha', { ascending: false }).limit(200);
-  if (higRes.error) {
-    $("#hig-msg").textContent = higRes.error.message;
-  } else {
+    // Higiene (servidor ya filtra por usuario)
+    const higRes = await supabase.from('v_higiene').select('*').order('fecha', { ascending: false }).limit(200);
     renderHigiene(higRes.data || []);
-  }
 
-  // CITACIONES
-  const citaRes = await supabase.from('citaciones').select('*').order('fecha').limit(200);
-  if (citaRes.error && citaRes.error.code === '42501') {
-    $("#cit-msg").textContent = "Sin permisos para ver citaciones. Revisa RLS (citaciones).";
-  }
-  renderCitaciones(citaRes);
+    // Citaciones
+    const citaRes = await supabase.from('citaciones').select('*').order('fecha').limit(200);
+    renderCitaciones(citaRes);
 
-  // RECOMENDACIONES
-  const recos = buildRecommendations(t, (labsRes.data||[]));
-  $("#reco-cards").innerHTML = recos.length
-    ? recos.map(r=>`<div class="reco"><strong>${r.title}</strong><div class="muted">${r.detail}</div></div>`).join('')
-    : `<span class="muted">Sin recomendaciones específicas. ¡Buen trabajo!</span>`;
+    // Recomendaciones
+    const recos = buildRecommendations(trabRes.data, full);
+    document.querySelector("#reco-cards").innerHTML = recos.length
+      ? recos.map(r=>`<div class="reco"><strong>${r.title}</strong><div class="muted">${r.detail}</div></div>`).join('')
+      : `<span class="muted">Sin recomendaciones específicas. ¡Buen trabajo!</span>`;
 
-  // DASHBOARD + SUPERVISOR
-  if (['salud','admin'].includes(rol)) {
-    const [venc, imcR, glu, chol] = await Promise.all([
-      supabase.from('resumen_vencimientos').select('*'),
-      supabase.from('resumen_imc').select('*'),
-      supabase.from('resumen_labs_glucosa').select('*'),
-      supabase.from('resumen_labs_colesterol').select('*')
-    ]);
-    if (venc.error) $('#dash-msg').textContent = venc.error.message; else if (venc.data?.length) renderVenc(venc.data); else $('#dash-msg').textContent = "Completa y refresca los resúmenes.";
-    if (imcR.error) $('#dash-msg-imc').textContent = imcR.error.message; else if (imcR.data?.length) renderIMC(imcR.data); else $('#dash-msg-imc').textContent = "Sin datos IMC.";
-    if (glu.error) $('#dash-msg-glu').textContent = glu.error.message; else if (glu.data?.length) renderGlu(glu.data); else $('#dash-msg-glu').textContent = "Sin datos de glucosa.";
-    if (chol.error) $('#dash-msg-chol').textContent = chol.error.message; else if (chol.data?.length) renderChol(chol.data); else $('#dash-msg-chol').textContent = "Sin datos de colesterol.";
-
-    setupSupervisor();
+    // Dashboard Salud
+    if (rol === 'salud' || rol === 'admin') {
+      const [venc, imc, glu, chol] = await Promise.all([
+        supabase.from('resumen_vencimientos').select('*'),
+        supabase.from('resumen_imc').select('*'),
+        supabase.from('resumen_labs_glucosa').select('*'),
+        supabase.from('resumen_labs_colesterol').select('*')
+      ]);
+      if (!venc.error && venc.data?.length) renderVenc(venc.data); else $('#dash-msg').textContent = "Completa y refresca los resúmenes.";
+      if (!imc.error && imc.data?.length) renderIMC(imc.data); else $('#dash-msg-imc').textContent = "Sin datos IMC (revisa peso/altura y ejecuta refresh).";
+      if (!glu.error && glu.data?.length) renderGlu(glu.data); else $('#dash-msg-glu').textContent = "Sin datos de glucosa (sube exámenes y ejecuta refresh).";
+      if (!chol.error && chol.data?.length) renderChol(chol.data); else $('#dash-msg-chol').textContent = "Sin datos de colesterol (sube exámenes y ejecuta refresh).";
+      setupSupervisor(); // activar supervisor
+    }
+  } catch (e) {
+    console.error("Error en loadData:", e);
   }
 }
 
-// Supervisor (igual que v8)
+// Supervisor nuevo: buscar en USUARIOS (nombre/email/rut) y enriquecer con TRABAJADORES
 function setupSupervisor(){
   const input = document.querySelector('#srch');
   const results = document.querySelector('#srch-results');
@@ -158,6 +143,7 @@ function setupSupervisor(){
 
 async function searchWorkers(q, container){
   container.innerHTML = `<span class="muted">Buscando…</span>`;
+  // 1) Buscar en usuarios por nombre/email/rut
   const u = await supabase
     .from('usuarios')
     .select('rut,nombre,email')
@@ -166,11 +152,14 @@ async function searchWorkers(q, container){
   if (u.error){ container.innerHTML = `<span class="muted">${u.error.message}</span>`; return; }
   if (!u.data?.length){ container.innerHTML = `<span class="muted">Sin resultados</span>`; return; }
 
+  // 2) Enriquecer con gerencia/empresa desde trabajadores (si existen)
   const ruts = u.data.map(x=>x.rut).filter(Boolean);
   let mapTrab = {};
   if (ruts.length){
     const t = await supabase.from('trabajadores').select('rut,gerencia,empresa').in('rut', ruts);
-    if (!t.error && t.data){ mapTrab = Object.fromEntries(t.data.map(x=>[x.rut, x])); }
+    if (!t.error && t.data){
+      mapTrab = Object.fromEntries(t.data.map(x=>[x.rut, x]));
+    }
   }
 
   container.innerHTML = u.data.map(w=>{
@@ -188,16 +177,15 @@ async function searchWorkers(q, container){
 
 async function loadWorkerDetail(rut){
   document.querySelector('#sup-detail').style.display = 'block';
-  const tRes = await supabase.from('trabajadores').select('*').eq('rut', rut).limit(1);
-  const uRes = await supabase.from('usuarios').select('email,nombre').eq('rut', rut).limit(1);
-  const t = (tRes.data||[])[0], u = (uRes.data||[])[0];
+  // Perfil
+  const { data: t } = await supabase.from('trabajadores').select('*').eq('rut', rut).maybeSingle();
+  const { data: u } = await supabase.from('usuarios').select('email,nombre').eq('rut', rut).maybeSingle();
   const email = u?.email || t?.email || '';
   const nombre = u?.nombre || t?.nombre || 'Sin nombre';
   const perfilHtml = t ? `<div><strong>${nombre}</strong></div>
       <div class="muted">${email}</div><div class="muted">${t.empresa||'—'} • ${t.gerencia||'—'}</div>
       <div class="muted">RUT: ${rut}</div>` : `<div><strong>${nombre}</strong></div><div class="muted">${email}</div><div class="muted">RUT: ${rut}</div>`;
   document.querySelector('#sup-perfil').innerHTML = perfilHtml;
-
   const imc = calcIMC(t?.peso_kg, t?.altura_cm);
   const edad = calcEdad(t?.fecha_nacimiento);
   const kpis = [
@@ -207,9 +195,11 @@ async function loadWorkerDetail(rut){
   ];
   document.querySelector('#sup-kpis').innerHTML = kpis.map(k=>`<div class="kpi"><div class="title">${k.title}</div><div class="value">${k.value}</div></div>`).join('');
 
+  // Citaciones
   const cit = await supabase.from('citaciones').select('*').eq('rut', rut).order('fecha');
   renderTable('#sup-cit tbody', cit);
 
+  // Labs (filtrables)
   const labs = await supabase.from('examenes').select('*').eq('rut', rut).order('fecha', { ascending:false });
   const allLabs = labs.data || [];
   renderLabsGeneric('#sup-labs tbody', allLabs);
@@ -225,15 +215,16 @@ async function loadWorkerDetail(rut){
     renderLabsGeneric('#sup-labs tbody', filtered);
   };
 
+  // Higiene
   const hig = await supabase.from('exposiciones').select('*').eq('rut', rut).order('fecha', { ascending:false });
   if (hig.error && hig.error.code === '42501'){
-    document.querySelector('#sup-hig tbody').innerHTML = `<tr><td colspan="6" class="muted">Sin permisos para ver exposiciones. Revisa RLS.</td></tr>`;
+    document.querySelector('#sup-hig tbody').innerHTML = `<tr><td colspan="6" class="muted">Sin permisos para ver exposiciones. Ejecuta policies_salud.sql.</td></tr>`;
   } else {
     renderHigieneGeneric('#sup-hig tbody', hig.data||[]);
   }
 }
 
-// Renders
+// Helpers render (reutilizados)
 function renderTable(sel, res){
   const tbody = document.querySelector(sel);
   if (res.error){ tbody.innerHTML = `<tr><td colspan="6" class="muted">${res.error.message}</td></tr>`; return; }
@@ -274,6 +265,8 @@ function renderHigieneGeneric(sel, rows){
     </tr>`;
   }).join('');
 }
+
+// Renderers de perfil propio
 function renderAlertas(list){
   const el = document.querySelector("#alertas");
   if (!list.length){ el.innerHTML = `<span class="muted">Sin alertas</span>`; return; }
@@ -305,23 +298,89 @@ function renderLabs(rows){
     <td>${l.resultado ?? ''} ${l.unidad ?? ''}</td><td>${l.referencia ?? ''}</td><td>${l.interpretacion ?? ''}</td>
   </tr>`).join('');
 }
+function renderHigiene(rows){
+  const tb = document.querySelector('#tabla-higiene tbody');
+  if (!rows.length){ tb.innerHTML = `<tr><td colspan="6" class="muted">Sin registros</td></tr>`; return; }
+  tb.innerHTML = rows.map(r=>{
+    const badge = (nivel)=>{
+      if ((nivel||'').startsWith('Crítico')) return `<span class="badge crit">${nivel}</span>`;
+      if ((nivel||'').startsWith('Próximo')) return `<span class="badge warn">${nivel}</span>`;
+      if ((nivel||'').startsWith('OK')) return `<span class="badge ok">${nivel}</span>`;
+      return `<span class="badge">${nivel||'—'}</span>`;
+    };
+    return `<tr>
+      <td>${r.agente ?? ''}</td><td>${r.ges ?? '—'}</td><td>${r.fecha ?? ''}</td>
+      <td>${r.valor ?? ''} ${r.unidad ?? ''}</td><td>${r.oel ?? ''} ${r.unidad ?? ''}</td>
+      <td>${badge(r.nivel)} ${r.pct_oel!=null ? `(${r.pct_oel}% OEL)` : ''}</td>
+    </tr>`;
+  }).join('');
+}
 function renderCitaciones(citaRes){
   const tbody = document.querySelector("#citaciones tbody");
-  if (citaRes.error){ tbody.innerHTML = `<tr><td colspan="6" class="muted">${citaRes.error.message}</td></tr>`; return; }
-  const rows = citaRes.data||[];
-  if (!rows.length){
-    $("#citaciones-count").textContent = "0";
+  if (citaRes.error && citaRes.error.code === '42P01'){
+    document.querySelector("#citaciones-count").textContent = "Agrega la tabla 'citaciones'";
+    tbody.innerHTML = `<tr><td colspan="6" class="muted">Crea la tabla 'citaciones' (ver guía)</td></tr>`;
+  } else if (!citaRes.data || !citaRes.data.length){
+    document.querySelector("#citaciones-count").textContent = "0";
     tbody.innerHTML = `<tr><td colspan="6" class="muted">Sin citaciones</td></tr>`;
-    return;
+  } else {
+    document.querySelector("#citaciones-count").textContent = citaRes.data.length;
+    tbody.innerHTML = citaRes.data.map(c=>`<tr>
+      <td>${c.fecha ?? ''}</td><td>${c.hora ?? ''}</td><td>${c.tipo ?? ''}</td>
+      <td>${c.centro ?? ''}</td><td>${c.direccion ?? ''}</td><td>${c.estado ?? ''}</td>
+    </tr>`).join('');
   }
-  $("#citaciones-count").textContent = rows.length;
-  tbody.innerHTML = rows.map(c=>`<tr>
-    <td>${c.fecha ?? ''}</td><td>${c.hora ?? ''}</td><td>${c.tipo ?? ''}</td>
-    <td>${c.centro ?? ''}</td><td>${c.direccion ?? ''}</td><td>${c.estado ?? ''}</td>
-  </tr>`).join('');
 }
 
-// CALC
+// Dashboard charts (mismo que v5)
+function renderVenc(rows){
+  const ctx = document.getElementById('chart-vencimientos').getContext('2d');
+  const labels = rows.map(r=>r.gerencia);
+  const vencidos = rows.map(r=>r.vencidos||0);
+  const criticos30 = rows.map(r=>r.criticos_30||0);
+  const proximos60 = rows.map(r=>r.proximos_60||0);
+  const ok = rows.map(r=>(r.trabajadores||0)-((r.vencidos||0)+(r.criticos_30||0)+(r.proximos_60||0)));
+  new Chart(ctx, { type:'bar', data:{ labels, datasets:[
+    { label:'Vencidos', data:vencidos, stack:'x' },
+    { label:'≤30 días', data:criticos30, stack:'x' },
+    { label:'≤60 días', data:proximos60, stack:'x' },
+    { label:'OK', data:ok, stack:'x' },
+  ]}, options:{ responsive:true, plugins:{ legend:{ position:'bottom' } }, scales:{ x:{ stacked:true }, y:{ stacked:true, beginAtZero:true } } } });
+}
+function renderIMC(rows){
+  const ctx = document.getElementById('chart-imc').getContext('2d');
+  const labels = rows.map(r=>r.gerencia);
+  const bajo = rows.map(r=>r.bajo_peso||0);
+  const normal = rows.map(r=>r.normal||0);
+  const sobre = rows.map(r=>r.sobrepeso||0);
+  const obeso = rows.map(r=>r.obesidad||0);
+  new Chart(ctx, { type:'bar', data:{ labels, datasets:[
+    { label:'Bajo peso', data:bajo, stack:'x' },
+    { label:'Normal', data:normal, stack:'x' },
+    { label:'Sobrepeso', data:sobre, stack:'x' },
+    { label:'Obesidad', data:obeso, stack:'x' },
+  ]}, options:{ responsive:true, plugins:{ legend:{ position:'bottom' } }, scales:{ x:{ stacked:true }, y:{ stacked:true, beginAtZero:true } } } });
+}
+function renderGlu(rows){
+  const ctx = document.getElementById('chart-glu').getContext('2d');
+  const labels = rows.map(r=>r.gerencia);
+  new Chart(ctx, { type:'bar', data:{ labels, datasets:[
+    { label:'Normal (<100)', data: rows.map(r=>r.normal||0), stack:'x' },
+    { label:'100–125', data: rows.map(r=>r.pre||0), stack:'x' },
+    { label:'≥126', data: rows.map(r=>r.alta||0), stack:'x' },
+  ]}, options:{ responsive:true, plugins:{ legend:{ position:'bottom' } }, scales:{ x:{ stacked:true }, y:{ stacked:true, beginAtZero:true } } } });
+}
+function renderChol(rows){
+  const ctx = document.getElementById('chart-chol').getContext('2d');
+  const labels = rows.map(r=>r.gerencia);
+  new Chart(ctx, { type:'bar', data:{ labels, datasets:[
+    { label:'Deseable (<200)', data: rows.map(r=>r.normal||0), stack:'x' },
+    { label:'Límite (200–239)', data: rows.map(r=>r.limite||0), stack:'x' },
+    { label:'Alto (≥240)', data: rows.map(r=>r.alto||0), stack:'x' },
+  ]}, options:{ responsive:true, plugins:{ legend:{ position:'bottom' } }, scales:{ x:{ stacked:true }, y:{ stacked:true, beginAtZero:true } } } });
+}
+
+// Calculos
 function calcIMC(peso, alturaCm){ const m=(alturaCm||0)/100; if(!peso||!m) return NaN; return peso/(m*m); }
 function calcEdad(iso){ if(!iso) return NaN; const d=new Date(iso); const diff=Date.now()-d.getTime(); return Math.floor(diff/(1000*60*60*24*365.25)); }
 function parseNumber(x){ if(x==null) return NaN; const s=String(x).replace(',', '.').match(/[0-9.]+/g); return s ? parseFloat(s.join('')) : NaN; }
@@ -351,5 +410,5 @@ function buildRecommendations(trab, labs){
   return recos;
 }
 
-supabase.auth.onAuthStateChange(()=>{ refresh(); });
+supabase.auth.onAuthStateChange((_event, _session)=>{ refresh(); });
 refresh();

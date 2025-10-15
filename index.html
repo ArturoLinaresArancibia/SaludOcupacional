@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Salud Ocupacional</title>
-  <link rel="stylesheet" href="./styles.css?v=9">
+  <link rel="stylesheet" href="./styles.css?v=6">
 </head>
 <body>
   <header class="top">
@@ -68,7 +68,6 @@
         <div class="card">
           <h2>Higiene ocupacional</h2>
           <p class="muted">Agentes, GES y nivel de riesgo respecto al OEL.</p>
-          <div id="hig-msg" class="muted"></div>
           <table class="table" id="tabla-higiene">
             <thead><tr>
               <th>Agente</th><th>GES</th><th>Fecha</th><th>Valor</th><th>OEL</th><th>Nivel</th>
@@ -94,7 +93,6 @@
             <h2>Próximas citaciones</h2>
             <span class="muted" id="citaciones-count"></span>
           </div>
-          <div id="cit-msg" class="muted"></div>
           <table class="table" id="citaciones">
             <thead><tr><th>Fecha</th><th>Hora</th><th>Tipo</th><th>Centro</th><th>Dirección</th><th>Estado</th></tr></thead>
             <tbody><tr><td colspan="6" class="muted">Cargando…</td></tr></tbody>
@@ -106,6 +104,14 @@
         <div class="card">
           <h2>Recomendaciones personalizadas</h2>
           <div id="reco-cards" class="reco-cards"><span class="muted">Analizando…</span></div>
+          <details class="mt8">
+            <summary>¿Cómo se calculan?</summary>
+            <ul class="muted">
+              <li><strong>IMC</strong> desde altura/peso.</li>
+              <li><strong>Glucosa</strong>: normal 70–99; 100–125; ≥126.</li>
+              <li><strong>Colesterol total</strong>: &lt;200 deseable; 200–239 límite; ≥240 alto.</li>
+            </ul>
+          </details>
         </div>
       </section>
 
@@ -190,7 +196,7 @@
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script type="module" src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script type="module" src="./config.js?v=9"></script>
-  <script type="module" src="./app.js?v=9"></script>
+  <script type="module" src="./config.js?v=6"></script>
+  <script type="module" src="./app.js?v=6"></script>
 </body>
 </html>
