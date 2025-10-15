@@ -15,7 +15,6 @@ document.querySelectorAll('.tab').forEach(btn=>{
 });
 $("#iframe-externo").src = EXTERNAL_PORTAL_URL;
 
-// AUTH
 async function refresh() {
   const { data: { user } } = await supabase.auth.getUser();
   if (user) {
@@ -42,37 +41,25 @@ document.querySelector("#btn-logout").addEventListener("click", async ()=>{ awai
 async function loadData(user){
   const email = user?.email;
 
-  // USUARIOS: sin single, sin maybeSingle
-  let u = await supabase.from('usuarios').select('rut,email,nombre,rol').eq('email', email).limit(1);
-  let me = (u.data && u.data[0]) ? u.data[0] : null;
-  if (!me && (!u.error)) {
-    // fallback por si el correo no está en usuarios
-    $("#perfil").innerHTML = `<span class="muted">No existe fila en 'usuarios' para ${email}</span>`;
-  } else if (u.error) {
-    $("#perfil").innerHTML = `<span class="muted">${u.error.message}</span>`;
-  } else {
-    $("#perfil").innerHTML = `<div><strong>${me.nombre ?? 'Sin nombre'}</strong></div><div class="muted">${me.email}</div>`;
-  }
+  // USUARIO (limit(1) para evitar single())
+  const u = await supabase.from('usuarios').select('rut,email,nombre,rol').eq('email', email).limit(1);
+  const me = (u.data||[])[0];
+  if (u.error) { $("#perfil").innerHTML = `<span class="muted">${u.error.message}</span>`; }
+  else if (!me) { $("#perfil").innerHTML = `<span class="muted">No existe fila en 'usuarios' para ${email}</span>`; }
+  else { $("#perfil").innerHTML = `<div><strong>${me.nombre ?? 'Sin nombre'}</strong></div><div class="muted">${me.email}</div>`; }
 
-  // ROL: si usuarios no tiene, revisa tabla roles (si existe)
+  // ROL
   let rol = (me?.rol || 'trabajador').toLowerCase();
   if (!me?.rol) {
     const r = await supabase.from('roles').select('rol').eq('email', email).limit(1);
-    if (!r.error && r.data?.length && ['salud','admin'].includes((r.data[0].rol||'').toLowerCase())) {
-      rol = r.data[0].rol.toLowerCase();
-    }
+    if (!r.error && r.data?.length) rol = r.data[0].rol.toLowerCase();
   }
-  if (rol === 'salud' || rol === 'admin') document.querySelectorAll('.tab-salud').forEach(t=>t.classList.remove('hidden'));
+  if (['salud','admin'].includes(rol)) document.querySelectorAll('.tab-salud').forEach(t=>t.classList.remove('hidden'));
 
-  // TRABAJADORES: por rut (si lo tenemos) o por email
+  // TRABAJADOR por rut o email
   let t;
-  if (me?.rut) {
-    const r1 = await supabase.from('trabajadores').select('*').eq('rut', me.rut).limit(1);
-    t = (r1.data||[])[0];
-  } else {
-    const r2 = await supabase.from('trabajadores').select('*').eq('email', email).limit(1);
-    t = (r2.data||[])[0];
-  }
+  if (me?.rut) t = (await supabase.from('trabajadores').select('*').eq('rut', me.rut).limit(1)).data?.[0];
+  else t = (await supabase.from('trabajadores').select('*').eq('email', email).limit(1)).data?.[0];
 
   // KPIs
   const imc = calcIMC(t?.peso_kg, t?.altura_cm);
@@ -84,56 +71,69 @@ async function loadData(user){
   ];
   $("#kpis").innerHTML = kpis.map(k=>`<div class="kpi"><div class="title">${k.title}</div><div class="value">${k.value}</div></div>`).join('');
 
-  // ALERTAS + CHIP
+  // ALERTAS
   const evalsRes = await supabase.from('v_alertas').select('*').order('dias_restantes');
-  renderAlertas(evalsRes.data || []);
+  if (evalsRes.error) { $("#alertas").innerHTML = `<span class="muted">${evalsRes.error.message}</span>`; }
+  else renderAlertas(evalsRes.data || []);
   setStatusChip(evalsRes.data || []);
 
   // LABS
   const labsRes = await supabase.from('examenes').select('*').order('fecha', { ascending: false }).limit(200);
-  const full = labsRes.data ?? [];
-  renderLabs(full);
-  $("#filtro-labs").addEventListener("input", (e)=>{
-    const q = e.target.value.toLowerCase();
-    const filtered = full.filter(l =>
-      (l.tipo||'').toLowerCase().includes(q) ||
-      (l.parametro||'').toLowerCase().includes(q) ||
-      (l.interpretacion||'').toLowerCase().includes(q)
-    );
-    renderLabs(filtered);
-  });
+  if (labsRes.error && labsRes.error.code === '42501') {
+    $("#labs tbody").innerHTML = `<tr><td colspan="6" class="muted">Sin permisos para ver exámenes. Revisa RLS (examenes).</td></tr>`;
+  } else {
+    const full = labsRes.data ?? [];
+    renderLabs(full);
+    $("#filtro-labs").addEventListener("input", (e)=>{
+      const q = e.target.value.toLowerCase();
+      const filtered = full.filter(l =>
+        (l.tipo||'').toLowerCase().includes(q) ||
+        (l.parametro||'').toLowerCase().includes(q) ||
+        (l.interpretacion||'').toLowerCase().includes(q)
+      );
+      renderLabs(filtered);
+    });
+  }
 
-  // HIGIENE
+  // HIGIENE (vista)
   const higRes = await supabase.from('v_higiene').select('*').order('fecha', { ascending: false }).limit(200);
-  renderHigiene(higRes.data || []);
+  if (higRes.error) {
+    $("#hig-msg").textContent = higRes.error.message;
+  } else {
+    renderHigiene(higRes.data || []);
+  }
 
   // CITACIONES
   const citaRes = await supabase.from('citaciones').select('*').order('fecha').limit(200);
+  if (citaRes.error && citaRes.error.code === '42501') {
+    $("#cit-msg").textContent = "Sin permisos para ver citaciones. Revisa RLS (citaciones).";
+  }
   renderCitaciones(citaRes);
 
   // RECOMENDACIONES
-  const recos = buildRecommendations(t, full);
+  const recos = buildRecommendations(t, (labsRes.data||[]));
   $("#reco-cards").innerHTML = recos.length
     ? recos.map(r=>`<div class="reco"><strong>${r.title}</strong><div class="muted">${r.detail}</div></div>`).join('')
     : `<span class="muted">Sin recomendaciones específicas. ¡Buen trabajo!</span>`;
 
   // DASHBOARD + SUPERVISOR
-  if (rol === 'salud' || rol === 'admin') {
+  if (['salud','admin'].includes(rol)) {
     const [venc, imcR, glu, chol] = await Promise.all([
       supabase.from('resumen_vencimientos').select('*'),
       supabase.from('resumen_imc').select('*'),
       supabase.from('resumen_labs_glucosa').select('*'),
       supabase.from('resumen_labs_colesterol').select('*')
     ]);
-    if (!venc.error && venc.data?.length) renderVenc(venc.data); else $('#dash-msg').textContent = "Completa y refresca los resúmenes.";
-    if (!imcR.error && imcR.data?.length) renderIMC(imcR.data); else $('#dash-msg-imc').textContent = "Sin datos IMC.";
-    if (!glu.error && glu.data?.length) renderGlu(glu.data); else $('#dash-msg-glu').textContent = "Sin datos de glucosa.";
-    if (!chol.error && chol.data?.length) renderChol(chol.data); else $('#dash-msg-chol').textContent = "Sin datos de colesterol.";
+    if (venc.error) $('#dash-msg').textContent = venc.error.message; else if (venc.data?.length) renderVenc(venc.data); else $('#dash-msg').textContent = "Completa y refresca los resúmenes.";
+    if (imcR.error) $('#dash-msg-imc').textContent = imcR.error.message; else if (imcR.data?.length) renderIMC(imcR.data); else $('#dash-msg-imc').textContent = "Sin datos IMC.";
+    if (glu.error) $('#dash-msg-glu').textContent = glu.error.message; else if (glu.data?.length) renderGlu(glu.data); else $('#dash-msg-glu').textContent = "Sin datos de glucosa.";
+    if (chol.error) $('#dash-msg-chol').textContent = chol.error.message; else if (chol.data?.length) renderChol(chol.data); else $('#dash-msg-chol').textContent = "Sin datos de colesterol.";
+
     setupSupervisor();
   }
 }
 
-// SUPERVISOR
+// Supervisor (igual que v8)
 function setupSupervisor(){
   const input = document.querySelector('#srch');
   const results = document.querySelector('#srch-results');
@@ -233,7 +233,7 @@ async function loadWorkerDetail(rut){
   }
 }
 
-// RENDERS
+// Renders
 function renderTable(sel, res){
   const tbody = document.querySelector(sel);
   if (res.error){ tbody.innerHTML = `<tr><td colspan="6" class="muted">${res.error.message}</td></tr>`; return; }
@@ -307,19 +307,18 @@ function renderLabs(rows){
 }
 function renderCitaciones(citaRes){
   const tbody = document.querySelector("#citaciones tbody");
-  if (citaRes.error && citaRes.error.code === '42P01'){
-    $("#citaciones-count").textContent = "Agrega la tabla 'citaciones'";
-    tbody.innerHTML = `<tr><td colspan="6" class="muted">Crea la tabla 'citaciones' (ver guía)</td></tr>`;
-  } else if (!citaRes.data || !citaRes.data.length){
+  if (citaRes.error){ tbody.innerHTML = `<tr><td colspan="6" class="muted">${citaRes.error.message}</td></tr>`; return; }
+  const rows = citaRes.data||[];
+  if (!rows.length){
     $("#citaciones-count").textContent = "0";
     tbody.innerHTML = `<tr><td colspan="6" class="muted">Sin citaciones</td></tr>`;
-  } else {
-    $("#citaciones-count").textContent = citaRes.data.length;
-    tbody.innerHTML = citaRes.data.map(c=>`<tr>
-      <td>${c.fecha ?? ''}</td><td>${c.hora ?? ''}</td><td>${c.tipo ?? ''}</td>
-      <td>${c.centro ?? ''}</td><td>${c.direccion ?? ''}</td><td>${c.estado ?? ''}</td>
-    </tr>`).join('');
+    return;
   }
+  $("#citaciones-count").textContent = rows.length;
+  tbody.innerHTML = rows.map(c=>`<tr>
+    <td>${c.fecha ?? ''}</td><td>${c.hora ?? ''}</td><td>${c.tipo ?? ''}</td>
+    <td>${c.centro ?? ''}</td><td>${c.direccion ?? ''}</td><td>${c.estado ?? ''}</td>
+  </tr>`).join('');
 }
 
 // CALC
@@ -352,5 +351,5 @@ function buildRecommendations(trab, labs){
   return recos;
 }
 
-supabase.auth.onAuthStateChange((_event, _session)=>{ refresh(); });
+supabase.auth.onAuthStateChange(()=>{ refresh(); });
 refresh();
