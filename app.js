@@ -111,18 +111,14 @@ async function loadData(){
       if (!imc.error && imc.data?.length) renderIMC(imc.data); else $('#dash-msg-imc').textContent = "Sin datos IMC (revisa peso/altura y ejecuta refresh).";
       if (!glu.error && glu.data?.length) renderGlu(glu.data); else $('#dash-msg-glu').textContent = "Sin datos de glucosa (sube exámenes y ejecuta refresh).";
       if (!chol.error && chol.data?.length) renderChol(chol.data); else $('#dash-msg-chol').textContent = "Sin datos de colesterol (sube exámenes y ejecuta refresh).";
-    }
-
-    // Supervisor: eventos
-    if (rol === 'salud' || rol === 'admin') {
-      setupSupervisor();
+      setupSupervisor(); // activar supervisor
     }
   } catch (e) {
     console.error("Error en loadData:", e);
   }
 }
 
-// Supervisor: buscar y ver detalle
+// Supervisor nuevo: buscar en USUARIOS (nombre/email/rut) y enriquecer con TRABAJADORES
 function setupSupervisor(){
   const input = document.querySelector('#srch');
   const results = document.querySelector('#srch-results');
@@ -147,17 +143,33 @@ function setupSupervisor(){
 
 async function searchWorkers(q, container){
   container.innerHTML = `<span class="muted">Buscando…</span>`;
-  const { data, error } = await supabase
-    .from('trabajadores')
-    .select('rut,nombre,email,gerencia,empresa,altura_cm,peso_kg,fecha_nacimiento')
+  // 1) Buscar en usuarios por nombre/email/rut
+  const u = await supabase
+    .from('usuarios')
+    .select('rut,nombre,email')
     .or(`nombre.ilike.%${q}%,email.ilike.%${q}%,rut.ilike.%${q}%`)
     .limit(20);
-  if (error){ container.innerHTML = `<span class="muted">${error.message}</span>`; return; }
-  if (!data?.length){ container.innerHTML = `<span class="muted">Sin resultados</span>`; return; }
-  container.innerHTML = data.map(w=>`<div class="row" style="justify-content:space-between;border:1px solid #e5e7eb;padding:8px;border-radius:12px;cursor:pointer" data-rut="${w.rut}">
-    <div><strong>${w.nombre||'Sin nombre'}</strong><div class="muted">${w.email||''} • ${w.gerencia||'—'}</div></div>
-    <span class="badge">Ver</span>
-  </div>`).join('');
+  if (u.error){ container.innerHTML = `<span class="muted">${u.error.message}</span>`; return; }
+  if (!u.data?.length){ container.innerHTML = `<span class="muted">Sin resultados</span>`; return; }
+
+  // 2) Enriquecer con gerencia/empresa desde trabajadores (si existen)
+  const ruts = u.data.map(x=>x.rut).filter(Boolean);
+  let mapTrab = {};
+  if (ruts.length){
+    const t = await supabase.from('trabajadores').select('rut,gerencia,empresa').in('rut', ruts);
+    if (!t.error && t.data){
+      mapTrab = Object.fromEntries(t.data.map(x=>[x.rut, x]));
+    }
+  }
+
+  container.innerHTML = u.data.map(w=>{
+    const t = mapTrab[w.rut] || {};
+    return `<div class="row" style="justify-content:space-between;border:1px solid #e5e7eb;padding:8px;border-radius:12px;cursor:pointer" data-rut="${w.rut}">
+      <div><strong>${w.nombre||'Sin nombre'}</strong><div class="muted">${w.email||''} ${t.gerencia? '• '+t.gerencia:''}</div></div>
+      <span class="badge">Ver</span>
+    </div>`;
+  }).join('');
+
   container.querySelectorAll('[data-rut]').forEach(el=>{
     el.addEventListener('click', ()=> loadWorkerDetail(el.dataset.rut));
   });
@@ -167,11 +179,12 @@ async function loadWorkerDetail(rut){
   document.querySelector('#sup-detail').style.display = 'block';
   // Perfil
   const { data: t } = await supabase.from('trabajadores').select('*').eq('rut', rut).maybeSingle();
-  const { data: u } = await supabase.from('usuarios').select('email').eq('rut', rut).maybeSingle();
+  const { data: u } = await supabase.from('usuarios').select('email,nombre').eq('rut', rut).maybeSingle();
   const email = u?.email || t?.email || '';
-  const perfilHtml = t ? `<div><strong>${t.nombre||'Sin nombre'}</strong></div>
+  const nombre = u?.nombre || t?.nombre || 'Sin nombre';
+  const perfilHtml = t ? `<div><strong>${nombre}</strong></div>
       <div class="muted">${email}</div><div class="muted">${t.empresa||'—'} • ${t.gerencia||'—'}</div>
-      <div class="muted">RUT: ${rut}</div>` : `<span class="muted">No encontrado</span>`;
+      <div class="muted">RUT: ${rut}</div>` : `<div><strong>${nombre}</strong></div><div class="muted">${email}</div><div class="muted">RUT: ${rut}</div>`;
   document.querySelector('#sup-perfil').innerHTML = perfilHtml;
   const imc = calcIMC(t?.peso_kg, t?.altura_cm);
   const edad = calcEdad(t?.fecha_nacimiento);
@@ -202,7 +215,7 @@ async function loadWorkerDetail(rut){
     renderLabsGeneric('#sup-labs tbody', filtered);
   };
 
-  // Higiene (directo a exposiciones por RUT)
+  // Higiene
   const hig = await supabase.from('exposiciones').select('*').eq('rut', rut).order('fecha', { ascending:false });
   if (hig.error && hig.error.code === '42501'){
     document.querySelector('#sup-hig tbody').innerHTML = `<tr><td colspan="6" class="muted">Sin permisos para ver exposiciones. Ejecuta policies_salud.sql.</td></tr>`;
@@ -211,7 +224,7 @@ async function loadWorkerDetail(rut){
   }
 }
 
-// Helpers render
+// Helpers render (reutilizados)
 function renderTable(sel, res){
   const tbody = document.querySelector(sel);
   if (res.error){ tbody.innerHTML = `<tr><td colspan="6" class="muted">${res.error.message}</td></tr>`; return; }
@@ -253,7 +266,7 @@ function renderHigieneGeneric(sel, rows){
   }).join('');
 }
 
-// Renderers existentes (perfil propio)
+// Renderers de perfil propio
 function renderAlertas(list){
   const el = document.querySelector("#alertas");
   if (!list.length){ el.innerHTML = `<span class="muted">Sin alertas</span>`; return; }
@@ -319,7 +332,7 @@ function renderCitaciones(citaRes){
   }
 }
 
-// Dashboard charts
+// Dashboard charts (mismo que v5)
 function renderVenc(rows){
   const ctx = document.getElementById('chart-vencimientos').getContext('2d');
   const labels = rows.map(r=>r.gerencia);
@@ -334,7 +347,6 @@ function renderVenc(rows){
     { label:'OK', data:ok, stack:'x' },
   ]}, options:{ responsive:true, plugins:{ legend:{ position:'bottom' } }, scales:{ x:{ stacked:true }, y:{ stacked:true, beginAtZero:true } } } });
 }
-
 function renderIMC(rows){
   const ctx = document.getElementById('chart-imc').getContext('2d');
   const labels = rows.map(r=>r.gerencia);
@@ -349,7 +361,6 @@ function renderIMC(rows){
     { label:'Obesidad', data:obeso, stack:'x' },
   ]}, options:{ responsive:true, plugins:{ legend:{ position:'bottom' } }, scales:{ x:{ stacked:true }, y:{ stacked:true, beginAtZero:true } } } });
 }
-
 function renderGlu(rows){
   const ctx = document.getElementById('chart-glu').getContext('2d');
   const labels = rows.map(r=>r.gerencia);
@@ -359,7 +370,6 @@ function renderGlu(rows){
     { label:'≥126', data: rows.map(r=>r.alta||0), stack:'x' },
   ]}, options:{ responsive:true, plugins:{ legend:{ position:'bottom' } }, scales:{ x:{ stacked:true }, y:{ stacked:true, beginAtZero:true } } } });
 }
-
 function renderChol(rows){
   const ctx = document.getElementById('chart-chol').getContext('2d');
   const labels = rows.map(r=>r.gerencia);
